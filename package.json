@@ -5,9 +5,7 @@
   "description": "A WhatsApp Bot Created By ALI",
   "main": "index.js",
   "scripts": {
-    "start": "pm2 start index.js --deep-monitoring --attach --name ALI-MD",
-    "stop": "pm2 stop ALI-MD",
-    "restart": "pm2 restart ALI-MD"
+    "start": "node index.js"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
@@ -20,7 +18,7 @@
     "cheerio": "^1.0.0-rc.12",
     "dotenv": "^16.0.0",
     "events": "^3.3.0",
-    "express": "^5.1.0",
+    "express": "^4.19.2",
     "file-type": "^21.0.0",
     "file_size_url": "1.0.6",
     "fluent-ffmpeg": "^2.1.2",
