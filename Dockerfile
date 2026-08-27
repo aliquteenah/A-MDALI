@@ -1,17 +1,14 @@
-FROM node:lts-buster
-
-# تثبيت أداة ffmpeg الضرورية لتنزيل وتحويل الصوت والفيديو والملصقات
-RUN apt-get update && \
-    apt-get install -y ffmpeg webp graphicsmagick imagemagick && \
-    rm -rf /var/lib/apt/lists/*
-
+FROM node:20-slim
 WORKDIR /app
-
 COPY package*.json ./
-RUN npm install && npm install -g pm2
-
+RUN npm install
 COPY . .
-
 EXPOSE 10000
-
-CMD ["npm", "start"]
+CMD ["node", "index.js"]
+FROM node:20-slim
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+EXPOSE 10000
+CMD ["node", "index.js"]
