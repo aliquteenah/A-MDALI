@@ -1,6 +1,6 @@
 import fs from 'fs';
 
-global.owner = ['967717521122']; // ضع رقمك مع رمز الدولة هنا
+global.owner = ['967717521122']; // تم تحديث رقمك المالك
 global.botname = 'ALI-MD';
 global.packname = 'ALI-MD';
 global.author = 'ALI';
