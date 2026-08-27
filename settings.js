@@ -1,6 +1,6 @@
 import fs from 'fs';
 
-global.owner = ['967717521122']; // ضع رقمك مع رمز الدولة
+global.owner = ['967717521122']; // ضع رقمك مع رمز الدولة هنا
 global.botname = 'ALI-MD';
 global.packname = 'ALI-MD';
 global.author = 'ALI';
