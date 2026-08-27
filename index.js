@@ -1,11 +1,11 @@
-import makeWASocket, { useMultiFileAuthState, DisconnectReason, delay, downloadMediaMessage } from '@whiskeysockets/baileys';
+import makeWASocket, { DisconnectReason, delay, downloadMediaMessage } from '@whiskeysockets/baileys';
 import express from 'express';
 import pino from 'pino';
-import fs from 'fs-extra';
 import path from 'path';
 import yts from 'yt-search';
 import axios from 'axios';
 import Sticker, { StickerTypes } from 'wa-sticker-formatter';
+import mongoose from 'mongoose';
 import { fileURLToPath } from 'url';
 
 import './settings.js';
@@ -19,20 +19,101 @@ const PORT = process.env.PORT || 10000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// الاتصال بقاعدة بيانات MongoDB
+const MONGO_URI = process.env.MONGO_URI;
+
+const SessionSchema = new mongoose.Schema({
+    id: { type: String, required: true, unique: true },
+    data: { type: String, required: true }
+});
+const SessionModel = mongoose.model('Session', SessionSchema);
+
+// نظام إدارة الجلسة سحابياً عبر MongoDB
+async function useMongoAuthState() {
+    const writeData = async (data, id) => {
+        try {
+            const value = JSON.stringify(data, null, 2);
+            await SessionModel.findOneAndUpdate({ id }, { data: value }, { upsert: true });
+        } catch (e) {
+            console.error('خطأ في كتابة الجلسة:', e);
+        }
+    };
+
+    const readData = async (id) => {
+        try {
+            const result = await SessionModel.findOne({ id });
+            if (result && result.data) {
+                return JSON.parse(result.data);
+            }
+        } catch (e) {
+            return null;
+        }
+        return null;
+    };
+
+    const removeData = async (id) => {
+        try {
+            await SessionModel.deleteOne({ id });
+        } catch (e) {}
+    };
+
+    const creds = (await readData('creds')) || makeWASocket.initAuthCreds();
+
+    return {
+        state: {
+            creds,
+            keys: {
+                get: async (type, ids) => {
+                    const data = {};
+                    await Promise.all(
+                        ids.map(async (id) => {
+                            let value = await readData(`${type}-${id}`);
+                            if (type === 'app-state-sync-key' && value) {
+                                value = makeWASocket.proto.Message.AppStateSyncKeyData.fromObject(value);
+                            }
+                            data[id] = value;
+                        })
+                    );
+                    return data;
+                },
+                set: async (data) => {
+                    const tasks = [];
+                    for (const category in data) {
+                        for (const id in data[category]) {
+                            const value = data[category][id];
+                            const key = `${category}-${id}`;
+                            tasks.push(value ? writeData(value, key) : removeData(key));
+                        }
+                    }
+                    await Promise.all(tasks);
+                }
+            }
+        },
+        saveCreds: () => writeData(creds, 'creds')
+    };
+}
+
 let sock;
 let currentPairingCode = '';
 let statusMessage = '';
 
-// محفز تنظيف الذاكرة العشوائية تلقائياً
 setInterval(() => {
-    if (global.gc) {
-        global.gc();
-    }
+    if (global.gc) global.gc();
 }, 30000);
 
 async function startBot() {
-    const sessionPath = path.join(__dirname, 'session_auth');
-    const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
+    if (MONGO_URI) {
+        try {
+            await mongoose.connect(MONGO_URI);
+            console.log("✅ تم الاتصال بنجاح بقاعدة البيانات MongoDB!");
+        } catch (err) {
+            console.error("❌ فشل الاتصال بقاعدة البيانات:", err);
+        }
+    } else {
+        console.log("⚠️ لم يتم ضبط رابط MONGO_URI في متغيرات البيئة.");
+    }
+
+    const { state, saveCreds } = await useMongoAuthState();
     
     sock = makeWASocket({
         logger: pino({ level: 'silent' }),
@@ -49,7 +130,7 @@ async function startBot() {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             statusMessage = 'تم قطع الاتصال، جاري إعادة الاتصال...';
             if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
-                await fs.remove(sessionPath);
+                await SessionModel.deleteMany({});
             }
             startBot();
         } else if (connection === 'open') {
@@ -59,7 +140,6 @@ async function startBot() {
         }
     });
 
-    // --- معالجة الأوامر ---
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
         
@@ -94,78 +174,16 @@ async function startBot() {
                     await sock.sendMessage(from, { text: menuText }, { quoted: msg });
                 }
                 else if (command === 'تشغيل' || command === 'play') {
-                    if (!q) return await sock.sendMessage(from, { text: `❌ يرجى إدخال اسم المقطع، مثال:\n${global.prefix}تشغيل سورة الملك` }, { quoted: msg });
-                    
+                    if (!q) return await sock.sendMessage(from, { text: `❌ يرجى إدخال اسم المقطع` }, { quoted: msg });
                     await sock.sendMessage(from, { text: global.mess.wait }, { quoted: msg });
                     try {
                         const search = await yts(q);
                         const video = search.videos[0];
-                        if (!video) return await sock.sendMessage(from, { text: '❌ لم يتم العثور على نتائج.' }, { quoted: msg });
-
-                        const apiUrl = `https://api.cobalt.tools/api/json`;
-                        const res = await axios.post(apiUrl, {
-                            url: video.url,
-                            downloadMode: "audio"
-                        }, { headers: { "Accept": "application/json", "Content-Type": "application/json" } });
-
-                        if (res.data && res.data.url) {
-                            await sock.sendMessage(from, { 
-                                audio: { url: res.data.url }, 
-                                mimetype: 'audio/mp4',
-                                ptt: false 
-                            }, { quoted: msg });
-                        } else {
-                            await sock.sendMessage(from, { text: `🎵 رابط المقطع:\n${video.url}` }, { quoted: msg });
+                        const res = await axios.post(`https://api.cobalt.tools/api/json`, { url: video.url, downloadMode: "audio" }, { headers: { "Accept": "application/json", "Content-Type": "application/json" } });
+                        if (res.data?.url) {
+                            await sock.sendMessage(from, { audio: { url: res.data.url }, mimetype: 'audio/mp4' }, { quoted: msg });
                         }
                     } catch (e) {
-                        await sock.sendMessage(from, { text: global.mess.error }, { quoted: msg });
-                    }
-                }
-                else if (command === 'فيديو' || command === 'video') {
-                    if (!q) return await sock.sendMessage(from, { text: `❌ يرجى إدخال اسم الفيديو، مثال:\n${global.prefix}فيديو قرآن كريم` }, { quoted: msg });
-
-                    await sock.sendMessage(from, { text: global.mess.wait }, { quoted: msg });
-                    try {
-                        const search = await yts(q);
-                        const video = search.videos[0];
-                        if (!video) return await sock.sendMessage(from, { text: '❌ لم يتم العثور على نتائج.' }, { quoted: msg });
-
-                        const apiUrl = `https://api.cobalt.tools/api/json`;
-                        const res = await axios.post(apiUrl, {
-                            url: video.url,
-                            downloadMode: "auto"
-                        }, { headers: { "Accept": "application/json", "Content-Type": "application/json" } });
-
-                        if (res.data && res.data.url) {
-                            await sock.sendMessage(from, { 
-                                video: { url: res.data.url }, 
-                                caption: `🎥 *${video.title}*\n\nحقوق: ${global.botname}`
-                            }, { quoted: msg });
-                        } else {
-                            await sock.sendMessage(from, { text: `🎬 رابط الفيديو:\n${video.url}` }, { quoted: msg });
-                        }
-                    } catch (e) {
-                        await sock.sendMessage(from, { text: global.mess.error }, { quoted: msg });
-                    }
-                }
-                else if (command === 'ملصق' || command === 's') {
-                    const isImage = messageType === 'imageMessage' || msg.message.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage;
-                    if (!isImage) return await sock.sendMessage(from, { text: '❌ قم بالرد على صورة أو أرسل صورة مع الأمر.' }, { quoted: msg });
-
-                    try {
-                        let targetMsg = msg.message.imageMessage ? msg : { message: msg.message.extendedTextMessage.contextInfo.quotedMessage };
-                        const buffer = await downloadMediaMessage(targetMsg, 'buffer', {}, { logger: console });
-                        
-                        const sticker = new Sticker(buffer, {
-                            pack: global.packname,
-                            author: global.author,
-                            type: StickerTypes.FULL,
-                            quality: 50
-                        });
-
-                        const stickerBuffer = await sticker.toBuffer();
-                        await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: msg });
-                    } catch (err) {
                         await sock.sendMessage(from, { text: global.mess.error }, { quoted: msg });
                     }
                 }
@@ -174,43 +192,29 @@ async function startBot() {
     });
 }
 
-// واجهة الويب لطلب كود الاقتران
 app.get('/', (req, res) => {
     res.send(`
         <!DOCTYPE html>
         <html lang="ar" dir="rtl">
         <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>${global.botname} - لوحة التحكم</title>
+            <meta charset="UTF-8"><title>${global.botname}</title>
             <style>
-                * { box-sizing: border-box; font-family: system-ui, sans-serif; }
-                body { background-color: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
-                .card { background: #1e293b; border-radius: 16px; padding: 30px; width: 100%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); text-align: center; border: 1px solid #334155; }
-                h1 { color: #38bdf8; margin-bottom: 8px; font-size: 26px; }
-                p { color: #94a3b8; font-size: 14px; margin-bottom: 24px; }
-                input { width: 100%; padding: 14px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; text-align: center; font-size: 16px; margin-bottom: 15px; outline: none; }
-                button { width: 100%; padding: 14px; border-radius: 8px; border: none; background: #0284c7; color: #fff; font-size: 16px; font-weight: bold; cursor: pointer; }
-                .code-box { margin-top: 20px; padding: 15px; background: #0f172a; border-radius: 8px; border: 1px dashed #38bdf8; }
-                .code { font-size: 24px; font-weight: bold; color: #38bdf8; letter-spacing: 3px; }
-                .status { margin-top: 15px; font-size: 13px; color: #22c55e; }
+                body { background: #0f172a; color: #fff; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+                .card { background: #1e293b; padding: 30px; border-radius: 12px; text-align: center; width: 350px; }
+                input, button { width: 100%; padding: 12px; margin-top: 10px; border-radius: 6px; border: none; }
+                input { background: #0f172a; color: #fff; text-align: center; }
+                button { background: #0284c7; color: #fff; font-weight: bold; cursor: pointer; }
+                .code { font-size: 22px; color: #38bdf8; font-weight: bold; margin-top: 15px; }
             </style>
         </head>
         <body>
             <div class="card">
-                <h1>👑 ${global.botname} BOT</h1>
-                <p>أدخل رقم الهاتف مع رمز الدولة لطلب كود الربط</p>
+                <h1>${global.botname}</h1>
                 <form action="/pair" method="POST">
-                    <input type="text" name="phone" placeholder="مثال: 966500000000" required />
+                    <input type="text" name="phone" placeholder="967717521122" required />
                     <button type="submit">طلب كود الربط</button>
                 </form>
-                ${currentPairingCode ? `
-                    <div class="code-box">
-                        <div>كود الربط الخاص بك:</div>
-                        <div class="code">${currentPairingCode}</div>
-                    </div>
-                ` : ''}
-                ${statusMessage ? `<div class="status">${statusMessage}</div>` : ''}
+                ${currentPairingCode ? `<div class="code">الكود: ${currentPairingCode}</div>` : ''}
             </div>
         </body>
         </html>
@@ -219,22 +223,10 @@ app.get('/', (req, res) => {
 
 app.post('/pair', async (req, res) => {
     let phone = req.body.phone.replace(/[^0-9]/g, '');
-    if (!phone) {
-        statusMessage = 'يرجى إدخال رقم هاتف صحيح';
-        return res.redirect('/');
-    }
-
-    try {
-        if (!sock || !sock.authState.creds.registered) {
-            await delay(1500);
-            let code = await sock.requestPairingCode(phone);
-            currentPairingCode = code?.match(/.{1,4}/g)?.join("-") || code;
-            statusMessage = 'تم استخراج الكود! أدخله فوراً في الواتساب.';
-        } else {
-            statusMessage = 'البوت متصل بالفعل.';
-        }
-    } catch (err) {
-        statusMessage = 'حدث خطأ أثناء طلب الكود، أعد المحاولة.';
+    if (phone && (!sock || !sock.authState.creds.registered)) {
+        await delay(1500);
+        let code = await sock.requestPairingCode(phone);
+        currentPairingCode = code?.match(/.{1,4}/g)?.join("-") || code;
     }
     res.redirect('/');
 });
