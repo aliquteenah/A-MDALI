@@ -5,7 +5,10 @@ import fs from 'fs-extra';
 import path from 'path';
 import yts from 'yt-search';
 import axios from 'axios';
+import Sticker, { StickerTypes } from 'wa-sticker-formatter';
 import { fileURLToPath } from 'url';
+
+import './settings.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,7 +22,6 @@ app.use(express.urlencoded({ extended: true }));
 let sock;
 let currentPairingCode = '';
 let statusMessage = '';
-const prefix = process.env.PREFIX || '.';
 
 async function startBot() {
     const sessionPath = path.join(__dirname, 'session_auth');
@@ -38,19 +40,19 @@ async function startBot() {
         const { connection, lastDisconnect } = update;
         if (connection === 'close') {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
-            statusMessage = 'تم قطع الاتصال، جاري إعادة المحاولة...';
+            statusMessage = 'تم قطع الاتصال، جاري إعادة الاتصال...';
             if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
                 await fs.remove(sessionPath);
             }
             startBot();
         } else if (connection === 'open') {
-            statusMessage = '✅ ALI-MD متصل بالواتساب بنجاح!';
+            statusMessage = `✅ بوت ${global.botname} متصل وجاهز للعمل!`;
             currentPairingCode = '';
             console.log(statusMessage);
         }
     });
 
-    // --- استقبال ومعالجة الأوامر والوسائط ---
+    // --- معالجة واستقبال الأوامر ---
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
         
@@ -65,95 +67,108 @@ async function startBot() {
                          msg.message.imageMessage?.caption || 
                          msg.message.videoMessage?.caption || '';
 
-            if (text.startsWith(prefix)) {
-                const args = text.slice(prefix.length).trim().split(/ +/);
+            if (text.startsWith(global.prefix)) {
+                const args = text.slice(global.prefix.length).trim().split(/ +/);
                 const command = args.shift().toLowerCase();
                 const q = args.join(' ');
 
-                // 1. أمر الفحص
+                // 1. أمر الفحص (ping)
                 if (command === 'ping') {
-                    await sock.sendMessage(from, { text: '🏓 Pong! البوت يعمل بسرعة ممتازة.' }, { quoted: msg });
+                    await sock.sendMessage(from, { text: `🏓 *Pong!* بوت ${global.botname} يعمل بسرعة ممتازة.` }, { quoted: msg });
                 } 
 
-                // 2. أمر قائمة الأوامر
-                else if (command === 'menu' || command === 'help') {
+                // 2. القائمة الرئيسية (menu)
+                else if (command === 'menu' || command === 'اوامر') {
                     const menuText = `
-✨ *قائمة أوامر ALI-MD* ✨
+👑 *لوحة تحكم بوت ${global.botname}* 👑
 
-• ${prefix}ping : فحص استجابة البوت
-• ${prefix}alive : فحص حالة البوت
-• ${prefix}play <اسم المقطع> : تحميل صوت من يوتيوب
-• ${prefix}song <اسم المقطع> : تحميل صوتية
-• ${prefix}video <اسم الفيديو> : تحميل فيديو من يوتيوب
-• ${prefix}s : تحويل الصورة إلى ملصق (قم بالرد على صورة)
+• ${global.prefix}شغيل <اسم الصوت> : تحميل صوتي من يوتيوب
+• ${global.prefix}فيديو <اسم الفيديو> : تحميل فيديو من يوتيوب
+• ${global.prefix}ملصق : تحويل الصورة لملصق (قم بالرد على صورة)
+• ${global.prefix}ping : فحص سرعة الاستجابة
                     `;
                     await sock.sendMessage(from, { text: menuText }, { quoted: msg });
                 }
 
-                // 3. أمر تحميل الصوت (play / song)
-                else if (command === 'play' || command === 'song') {
-                    if (!q) return await sock.sendMessage(from, { text: `❌ يرجى كتابة اسم المقطع، مثال:\n${prefix}play قران كريم` }, { quoted: msg });
+                // 3. أمر تحميل الصوت (تشغيل / play / song)
+                else if (command === 'تشغيل' || command === 'play' || command === 'song') {
+                    if (!q) return await sock.sendMessage(from, { text: `❌ يرجى إدخال اسم المقطع، مثال:\n${global.prefix}تشغيل سورة الملك` }, { quoted: msg });
                     
-                    await sock.sendMessage(from, { text: '🔍 جاري البحث والتحميل...' }, { quoted: msg });
+                    await sock.sendMessage(from, { text: global.mess.wait }, { quoted: msg });
                     try {
                         const search = await yts(q);
                         const video = search.videos[0];
                         if (!video) return await sock.sendMessage(from, { text: '❌ لم يتم العثور على أي نتائج.' }, { quoted: msg });
 
-                        const apiRes = await axios.get(`https://api.vreden.web.id/api/ytmp3?url=${encodeURIComponent(video.url)}`);
-                        const downloadUrl = apiRes.data?.result?.download?.url || apiRes.data?.result?.link;
+                        const apiUrl = `https://api.cobalt.tools/api/json`;
+                        const res = await axios.post(apiUrl, {
+                            url: video.url,
+                            downloadMode: "audio"
+                        }, { headers: { "Accept": "application/json", "Content-Type": "application/json" } });
 
-                        if (downloadUrl) {
+                        if (res.data && res.data.url) {
                             await sock.sendMessage(from, { 
-                                audio: { url: downloadUrl }, 
+                                audio: { url: res.data.url }, 
                                 mimetype: 'audio/mp4',
                                 ptt: false 
                             }, { quoted: msg });
                         } else {
-                            await sock.sendMessage(from, { text: `🎵 رابط المقطع على يوتيوب:\n${video.url}` }, { quoted: msg });
+                            await sock.sendMessage(from, { text: `🎵 رابط المقطع الصوتي:\n${video.url}` }, { quoted: msg });
                         }
                     } catch (e) {
-                        await sock.sendMessage(from, { text: '❌ حدث خطأ أثناء جلب المقطع الصوتي.' }, { quoted: msg });
+                        await sock.sendMessage(from, { text: global.mess.error }, { quoted: msg });
                     }
                 }
 
-                // 4. أمر تحميل الفيديو (video)
-                else if (command === 'video') {
-                    if (!q) return await sock.sendMessage(from, { text: `❌ يرجى كتابة اسم الفيديو، مثال:\n${prefix}video فيديو مضحك` }, { quoted: msg });
+                // 4. أمر تحميل الفيديو (فيديو / video)
+                else if (command === 'فيديو' || command === 'video') {
+                    if (!q) return await sock.sendMessage(from, { text: `❌ يرجى إدخال اسم الفيديو، مثال:\n${global.prefix}فيديو قرآن كريم` }, { quoted: msg });
 
-                    await sock.sendMessage(from, { text: '🎬 جاري البحث وتحميل الفيديو...' }, { quoted: msg });
+                    await sock.sendMessage(from, { text: global.mess.wait }, { quoted: msg });
                     try {
                         const search = await yts(q);
                         const video = search.videos[0];
-                        if (!video) return await sock.sendMessage(from, { text: '❌ لم يتم العثور على نتائج.' }, { quoted: msg });
+                        if (!video) return await sock.sendMessage(from, { text: '❌ لم يتم العثور على أي نتائج.' }, { quoted: msg });
 
-                        const apiRes = await axios.get(`https://api.vreden.web.id/api/ytmp4?url=${encodeURIComponent(video.url)}`);
-                        const downloadUrl = apiRes.data?.result?.download?.url || apiRes.data?.result?.link;
+                        const apiUrl = `https://api.cobalt.tools/api/json`;
+                        const res = await axios.post(apiUrl, {
+                            url: video.url,
+                            downloadMode: "auto"
+                        }, { headers: { "Accept": "application/json", "Content-Type": "application/json" } });
 
-                        if (downloadUrl) {
+                        if (res.data && res.data.url) {
                             await sock.sendMessage(from, { 
-                                video: { url: downloadUrl }, 
-                                caption: `🎥 *${video.title}*`
+                                video: { url: res.data.url }, 
+                                caption: `🎥 *${video.title}*\n\nحقوق: ${global.botname}`
                             }, { quoted: msg });
                         } else {
                             await sock.sendMessage(from, { text: `🎬 رابط الفيديو:\n${video.url}` }, { quoted: msg });
                         }
                     } catch (e) {
-                        await sock.sendMessage(from, { text: '❌ حدث خطأ أثناء تحميل الفيديو.' }, { quoted: msg });
+                        await sock.sendMessage(from, { text: global.mess.error }, { quoted: msg });
                     }
                 }
 
-                // 5. أمر تحويل الصورة لملصق (s / sticker)
-                else if (command === 's' || command === 'sticker') {
+                // 5. أمر الملصقات (ملصق / s / sticker)
+                else if (command === 'ملصق' || command === 's' || command === 'sticker') {
                     const isImage = messageType === 'imageMessage' || msg.message.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage;
-                    if (!isImage) return await sock.sendMessage(from, { text: '❌ قم بالرد على صورة أو أرسل صورة مع الأمر .s' }, { quoted: msg });
+                    if (!isImage) return await sock.sendMessage(from, { text: '❌ قم بالرد على صورة أو أرسل صورة مع الأمر .' }, { quoted: msg });
 
                     try {
                         let targetMsg = msg.message.imageMessage ? msg : { message: msg.message.extendedTextMessage.contextInfo.quotedMessage };
                         const buffer = await downloadMediaMessage(targetMsg, 'buffer', {}, { logger: console });
-                        await sock.sendMessage(from, { sticker: buffer }, { quoted: msg });
+                        
+                        const sticker = new Sticker(buffer, {
+                            pack: global.packname,
+                            author: global.author,
+                            type: StickerTypes.FULL,
+                            quality: 70
+                        });
+
+                        const stickerBuffer = await sticker.toBuffer();
+                        await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: msg });
                     } catch (err) {
-                        await sock.sendMessage(from, { text: '❌ حدث خطأ أثناء إنشاء الملصق.' }, { quoted: msg });
+                        await sock.sendMessage(from, { text: global.mess.error }, { quoted: msg });
                     }
                 }
             }
@@ -161,7 +176,7 @@ async function startBot() {
     });
 }
 
-// واجهة الويب لربط الحساب
+// لوحة الربط عبر الويب
 app.get('/', (req, res) => {
     res.send(`
         <!DOCTYPE html>
@@ -169,7 +184,7 @@ app.get('/', (req, res) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>ALI-MD - لوحة الربط</title>
+            <title>${global.botname} - لوحة التحكم</title>
             <style>
                 * { box-sizing: border-box; font-family: system-ui, sans-serif; }
                 body { background-color: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
@@ -185,7 +200,7 @@ app.get('/', (req, res) => {
         </head>
         <body>
             <div class="card">
-                <h1>👑 ALI-MD BOT</h1>
+                <h1>👑 ${global.botname} BOT</h1>
                 <p>أدخل رقم الهاتف مع رمز الدولة لطلب كود الربط</p>
                 <form action="/pair" method="POST">
                     <input type="text" name="phone" placeholder="مثال: 966500000000" required />
