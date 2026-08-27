@@ -1,0 +1,61 @@
+{
+  "name": "ALI-MD",
+  "description": "Javascript WhatsApp bot made by ALI",
+  "logo": "https://files.catbox.moe/6zd0ru.jpg",
+  "keywords": ["ALI-MD"],
+  "success_url": "/",
+  "stack": "container",
+  "env": {
+    "SESSION_ID": {
+      "description": "ضع كود الجلسة الخاص بك هنا",
+      "required": true,
+      "value": ""
+    },
+    "PREFIX": {
+      "description": "بادئة الأوامر",
+      "required": false,
+      "value": "."
+    },
+    "BOT_NAME": {
+      "description": "اسم البوت",
+      "required": false,
+      "value": "ALI-MD"
+    },
+    "MODE": {
+      "description": "وضع البوت: public/private/inbox/groups",
+      "required": false,
+      "value": "public"
+    },
+    "OWNER_NUMBER": {
+      "description": "رقم المالك بدون علامة +",
+      "required": false,
+      "value": "923427582273"
+    },
+    "AUTO_DOWNLOADER": {
+      "description": "تفعيل التنزيل التلقائي لجميع الوسائط",
+      "required": false,
+      "value": "true"
+    },
+    "ANTI_LINK": {
+      "description": "حماية الرابط",
+      "required": false,
+      "value": "true"
+    },
+    "ANTI_DELETE": {
+      "description": "استعادة الرسائل المحذوفة",
+      "required": false,
+      "value": "true"
+    },
+    "AUTO_STATUS_SEEN": {
+      "description": "مشاهدة الحالات تلقائياً",
+      "required": false,
+      "value": "true"
+    }
+  },
+  "buildpacks": [
+    {
+      "url": "https://github.com/heroku/heroku-buildpack-nodejs.git"
+    }
+  ],
+  "stack": "heroku-26"
+}
