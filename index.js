@@ -24,7 +24,7 @@ async function startBot() {
         logger: pino({ level: 'silent' }),
         printQRInTerminal: false,
         auth: state,
-        browser: ["KHAN-MD Web", "Chrome", "1.0.0"]
+        browser: ["ALI BOT Web", "Chrome", "1.0.0"]
     });
 
     sock.ev.on('creds.update', saveCreds);
@@ -36,7 +36,7 @@ async function startBot() {
             statusMessage = 'تم قطع الاتصال، جاري إعادة المحاولة...';
             if (shouldReconnect) startBot();
         } else if (connection === 'open') {
-            statusMessage = '✅ البوت متصل بالواتساب حالياً ويعمل بنجاح!';
+            statusMessage = '✅ بوت ALI متصل بالواتساب حالياً ويعمل بنجاح!';
             currentPairingCode = '';
             console.log(statusMessage);
         }
@@ -51,12 +51,12 @@ async function startBot() {
         const text = (m.message.conversation || m.message.extendedTextMessage?.text || '').trim();
 
         if (text === '.ping' || text === '.menu') {
-            await sock.sendMessage(chat, { text: '🤖 بوت KHAN-MD يعمل بنجاح عبر لوحة الويب!' }, { quoted: m });
+            await sock.sendMessage(chat, { text: '🤖 **ALI BOT** يعمل بنجاح عبر السيرفر!' }, { quoted: m });
         }
     });
 }
 
-// الواجهة البرمجية للموقع
+// واجهة الموقع باسم ALI
 app.get('/', (req, res) => {
     res.send(`
         <!DOCTYPE html>
@@ -64,29 +64,29 @@ app.get('/', (req, res) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>لوحة ربط KHAN-MD</title>
+            <title>ALI BOT - لوحة الربط</title>
             <style>
                 * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
                 body { background-color: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
                 .card { background: #1e293b; border-radius: 16px; padding: 30px; width: 100%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); text-align: center; border: 1px solid #334155; }
-                h1 { color: #a855f7; margin-bottom: 8px; font-size: 24px; }
+                h1 { color: #38bdf8; margin-bottom: 8px; font-size: 26px; font-weight: bold; }
                 p { color: #94a3b8; font-size: 14px; margin-bottom: 24px; }
                 input { width: 100%; padding: 14px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; text-align: center; font-size: 16px; margin-bottom: 15px; outline: none; }
-                input:focus { border-color: #a855f7; }
-                button { width: 100%; padding: 14px; border-radius: 8px; border: none; background: #9333ea; color: #fff; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s; }
-                button:hover { background: #7e22ce; }
-                .code-box { margin-top: 20px; padding: 15px; background: #0f172a; border-radius: 8px; border: 1px dashed #a855f7; }
+                input:focus { border-color: #38bdf8; }
+                button { width: 100%; padding: 14px; border-radius: 8px; border: none; background: #0284c7; color: #fff; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s; }
+                button:hover { background: #0369a1; }
+                .code-box { margin-top: 20px; padding: 15px; background: #0f172a; border-radius: 8px; border: 1px dashed #38bdf8; }
                 .code { font-size: 24px; font-weight: bold; color: #38bdf8; letter-spacing: 3px; }
                 .status { margin-top: 15px; font-size: 13px; color: #22c55e; }
             </style>
         </head>
         <body>
             <div class="card">
-                <h1>KHAN-MD Web Panel</h1>
-                <p>أدخل رقم الهاتف مع رمز الدولة لطلب كود الربط</p>
+                <h1>👑 ALI BOT</h1>
+                <p>أدخل رقم الهاتف مع رمز الدولة لربط البوت</p>
                 <form action="/pair" method="POST">
                     <input type="text" name="phone" placeholder="مثال: 966500000000" required />
-                    <button type="submit">احصل على كود الربط</button>
+                    <button type="submit">طلب كود الربط</button>
                 </form>
                 ${currentPairingCode ? `
                     <div class="code-box">
@@ -132,6 +132,6 @@ app.post('/pair', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+    console.log(`ALI BOT Server is running on port ${PORT}`);
     startBot();
 });
