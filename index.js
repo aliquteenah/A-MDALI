@@ -23,6 +23,13 @@ let sock;
 let currentPairingCode = '';
 let statusMessage = '';
 
+// تنظيف دوري للذاكرة العشوائية لمنع الانهيار (Out of Memory)
+setInterval(() => {
+    if (global.gc) {
+        global.gc();
+    }
+}, 60000);
+
 async function startBot() {
     const sessionPath = path.join(__dirname, 'session_auth');
     const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
@@ -74,7 +81,7 @@ async function startBot() {
 
                 // 1. أمر الفحص (ping)
                 if (command === 'ping') {
-                    await sock.sendMessage(from, { text: `🏓 *Pong!* بوت ${global.botname} يعمل بسرعة ممتازة.` }, { quoted: msg });
+                    await sock.sendMessage(from, { text: `🏓 *Pong!* بوت ${global.botname} يعمل بنجاح.` }, { quoted: msg });
                 } 
 
                 // 2. القائمة الرئيسية (menu)
@@ -82,23 +89,23 @@ async function startBot() {
                     const menuText = `
 👑 *لوحة تحكم بوت ${global.botname}* 👑
 
-• ${global.prefix}شغيل <اسم الصوت> : تحميل صوتي من يوتيوب
+• ${global.prefix}تشغيل <اسم الصوت> : تحميل صوتي من يوتيوب
 • ${global.prefix}فيديو <اسم الفيديو> : تحميل فيديو من يوتيوب
-• ${global.prefix}ملصق : تحويل الصورة لملصق (قم بالرد على صورة)
+• ${global.prefix}ملصق : تحويل الصورة لملصق
 • ${global.prefix}ping : فحص سرعة الاستجابة
                     `;
                     await sock.sendMessage(from, { text: menuText }, { quoted: msg });
                 }
 
-                // 3. أمر تحميل الصوت (تشغيل / play / song)
-                else if (command === 'تشغيل' || command === 'play' || command === 'song') {
+                // 3. أمر تحميل الصوت (تشغيل / play)
+                else if (command === 'تشغيل' || command === 'play') {
                     if (!q) return await sock.sendMessage(from, { text: `❌ يرجى إدخال اسم المقطع، مثال:\n${global.prefix}تشغيل سورة الملك` }, { quoted: msg });
                     
                     await sock.sendMessage(from, { text: global.mess.wait }, { quoted: msg });
                     try {
                         const search = await yts(q);
                         const video = search.videos[0];
-                        if (!video) return await sock.sendMessage(from, { text: '❌ لم يتم العثور على أي نتائج.' }, { quoted: msg });
+                        if (!video) return await sock.sendMessage(from, { text: '❌ لم يتم العثور على نتائج.' }, { quoted: msg });
 
                         const apiUrl = `https://api.cobalt.tools/api/json`;
                         const res = await axios.post(apiUrl, {
@@ -113,7 +120,7 @@ async function startBot() {
                                 ptt: false 
                             }, { quoted: msg });
                         } else {
-                            await sock.sendMessage(from, { text: `🎵 رابط المقطع الصوتي:\n${video.url}` }, { quoted: msg });
+                            await sock.sendMessage(from, { text: `🎵 رابط المقطع:\n${video.url}` }, { quoted: msg });
                         }
                     } catch (e) {
                         await sock.sendMessage(from, { text: global.mess.error }, { quoted: msg });
@@ -128,7 +135,7 @@ async function startBot() {
                     try {
                         const search = await yts(q);
                         const video = search.videos[0];
-                        if (!video) return await sock.sendMessage(from, { text: '❌ لم يتم العثور على أي نتائج.' }, { quoted: msg });
+                        if (!video) return await sock.sendMessage(from, { text: '❌ لم يتم العثور على نتائج.' }, { quoted: msg });
 
                         const apiUrl = `https://api.cobalt.tools/api/json`;
                         const res = await axios.post(apiUrl, {
@@ -149,10 +156,10 @@ async function startBot() {
                     }
                 }
 
-                // 5. أمر الملصقات (ملصق / s / sticker)
-                else if (command === 'ملصق' || command === 's' || command === 'sticker') {
+                // 5. أمر الملصقات (ملصق / s)
+                else if (command === 'ملصق' || command === 's') {
                     const isImage = messageType === 'imageMessage' || msg.message.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage;
-                    if (!isImage) return await sock.sendMessage(from, { text: '❌ قم بالرد على صورة أو أرسل صورة مع الأمر .' }, { quoted: msg });
+                    if (!isImage) return await sock.sendMessage(from, { text: '❌ قم بالرد على صورة أو أرسل صورة مع الأمر.' }, { quoted: msg });
 
                     try {
                         let targetMsg = msg.message.imageMessage ? msg : { message: msg.message.extendedTextMessage.contextInfo.quotedMessage };
@@ -162,7 +169,7 @@ async function startBot() {
                             pack: global.packname,
                             author: global.author,
                             type: StickerTypes.FULL,
-                            quality: 70
+                            quality: 50
                         });
 
                         const stickerBuffer = await sticker.toBuffer();
