@@ -1,4 +1,4 @@
-import makeWASocket, { useMultiFileAuthState, DisconnectReason, delay } from '@whiskeysockets/baileys';
+import makeWASocket, { useMultiFileAuthState, DisconnectReason, delay, downloadMediaMessage } from '@whiskeysockets/baileys';
 import express from 'express';
 import pino from 'pino';
 import fs from 'fs-extra';
@@ -17,6 +17,7 @@ app.use(express.urlencoded({ extended: true }));
 let sock;
 let currentPairingCode = '';
 let statusMessage = '';
+const prefix = process.env.PREFIX || '.';
 
 async function startBot() {
     const sessionPath = path.join(__dirname, 'session_auth');
@@ -47,9 +48,64 @@ async function startBot() {
             console.log(statusMessage);
         }
     });
+
+    // --- الاستماع للرسائل والأوامر ---
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+        if (type !== 'notify') return;
+        
+        for (const msg of messages) {
+            if (!msg.message || msg.key.fromMe) continue; // يتجاهل رسائل البوت نفسه
+
+            const from = msg.key.remoteJid;
+            const messageType = Object.keys(msg.message)[0];
+            
+            // استخراج النص من الرسالة
+            const text = msg.message.conversation || 
+                         msg.message.extendedTextMessage?.text || 
+                         msg.message.imageMessage?.caption || 
+                         msg.message.videoMessage?.caption || '';
+
+            // 1. معالجة التحميل التلقائي للوسائط
+            const mediaTypes = ['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage'];
+            if (mediaTypes.includes(messageType) && process.env.AUTO_DOWNLOADER !== 'false') {
+                try {
+                    const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: console });
+                    const tempDir = './downloads';
+                    await fs.ensureDir(tempDir);
+                    const filePath = path.join(tempDir, `${Date.now()}_ali_media`);
+                    await fs.writeFile(filePath, buffer);
+                    console.log(`✅ [ALI-MD] تم تنزيل الوسائط: ${filePath}`);
+                } catch (err) {
+                    console.error('❌ خطأ في تنزيل الوسائط:', err);
+                }
+            }
+
+            // 2. معالجة الأوامر
+            if (text.startsWith(prefix)) {
+                const command = text.slice(prefix.length).trim().split(' ')[0].toLowerCase();
+
+                if (command === 'ping') {
+                    await sock.sendMessage(from, { text: '🏓 Pong! البوت يعمل بسرعة ممتازة.' }, { quoted: msg });
+                } 
+                else if (command === 'alive') {
+                    await sock.sendMessage(from, { text: '👑 بوت ALI-MD يعمل حالياً بنجاح ومتصل بالشبكة!' }, { quoted: msg });
+                } 
+                else if (command === 'menu' || command === 'help') {
+                    const menuText = `
+✨ *قائمة أوامر ALI-MD* ✨
+
+• ${prefix}ping : فحص استجابة البوت
+• ${prefix}alive : فحص حالة البوت
+• ${prefix}menu : عرض هذه القائمة
+                    `;
+                    await sock.sendMessage(from, { text: menuText }, { quoted: msg });
+                }
+            }
+        }
+    });
 }
 
-// واجهة الويب لإدخال الرقم واستخراج كود الربط
+// واجهة الويب
 app.get('/', (req, res) => {
     res.send(`
         <!DOCTYPE html>
