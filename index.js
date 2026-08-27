@@ -23,12 +23,12 @@ let sock;
 let currentPairingCode = '';
 let statusMessage = '';
 
-// تنظيف دوري للذاكرة العشوائية لمنع الانهيار (Out of Memory)
+// محفز تنظيف الذاكرة العشوائية تلقائياً
 setInterval(() => {
     if (global.gc) {
         global.gc();
     }
-}, 60000);
+}, 30000);
 
 async function startBot() {
     const sessionPath = path.join(__dirname, 'session_auth');
@@ -59,7 +59,7 @@ async function startBot() {
         }
     });
 
-    // --- معالجة واستقبال الأوامر ---
+    // --- معالجة الأوامر ---
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
         
@@ -79,12 +79,9 @@ async function startBot() {
                 const command = args.shift().toLowerCase();
                 const q = args.join(' ');
 
-                // 1. أمر الفحص (ping)
                 if (command === 'ping') {
                     await sock.sendMessage(from, { text: `🏓 *Pong!* بوت ${global.botname} يعمل بنجاح.` }, { quoted: msg });
                 } 
-
-                // 2. القائمة الرئيسية (menu)
                 else if (command === 'menu' || command === 'اوامر') {
                     const menuText = `
 👑 *لوحة تحكم بوت ${global.botname}* 👑
@@ -96,8 +93,6 @@ async function startBot() {
                     `;
                     await sock.sendMessage(from, { text: menuText }, { quoted: msg });
                 }
-
-                // 3. أمر تحميل الصوت (تشغيل / play)
                 else if (command === 'تشغيل' || command === 'play') {
                     if (!q) return await sock.sendMessage(from, { text: `❌ يرجى إدخال اسم المقطع، مثال:\n${global.prefix}تشغيل سورة الملك` }, { quoted: msg });
                     
@@ -126,8 +121,6 @@ async function startBot() {
                         await sock.sendMessage(from, { text: global.mess.error }, { quoted: msg });
                     }
                 }
-
-                // 4. أمر تحميل الفيديو (فيديو / video)
                 else if (command === 'فيديو' || command === 'video') {
                     if (!q) return await sock.sendMessage(from, { text: `❌ يرجى إدخال اسم الفيديو، مثال:\n${global.prefix}فيديو قرآن كريم` }, { quoted: msg });
 
@@ -155,8 +148,6 @@ async function startBot() {
                         await sock.sendMessage(from, { text: global.mess.error }, { quoted: msg });
                     }
                 }
-
-                // 5. أمر الملصقات (ملصق / s)
                 else if (command === 'ملصق' || command === 's') {
                     const isImage = messageType === 'imageMessage' || msg.message.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage;
                     if (!isImage) return await sock.sendMessage(from, { text: '❌ قم بالرد على صورة أو أرسل صورة مع الأمر.' }, { quoted: msg });
@@ -183,7 +174,7 @@ async function startBot() {
     });
 }
 
-// لوحة الربط عبر الويب
+// واجهة الويب لطلب كود الاقتران
 app.get('/', (req, res) => {
     res.send(`
         <!DOCTYPE html>
